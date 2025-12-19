@@ -16,8 +16,11 @@ from django.utils import timezone
 from datetime import timedelta
 
 def test(req):
-    print(timezone.now())
-    print(timedelta(minutes=45))
+    # print(timezone.localtime(timezone.now()))
+    # print(timedelta(minutes=45))
+    # oa = models.OauthModel.objects.filter(user=req.user, status="Active").first()
+    # oa.save()
+    # models.OauthModel.objects.filter(user=req.user, status="Active").update(updated_time=timezone.now())
     return HttpResponse("s")
 
 ####################################### Generate Oauth code #######################################
