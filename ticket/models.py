@@ -36,3 +36,10 @@ class ZenDepartmentModel(models.Model):
     depatment_name = models.CharField(max_length=200, blank=False, null=False)
     create_time = models.DateTimeField(auto_now_add=True)
     updated_time = models.DateTimeField(auto_now=True)
+
+class CsvSchedule(models.Model):
+    oauthModal = models.ForeignKey(OauthModel, on_delete=models.CASCADE, related_name="CsvSchedule", blank=False, null=False)
+    name = models.CharField(max_length=100, unique=True)
+    last_row = models.PositiveIntegerField(default=0)
+    last_run = models.DateTimeField(null=True, blank=True)
+    is_running = models.BooleanField(default=False)

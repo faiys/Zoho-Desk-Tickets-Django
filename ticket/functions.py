@@ -1,7 +1,5 @@
 from ticket import models
-
-import requests
-import json
+import requests, json, time
 import pandas as pd
 
 ####################################### POST Method #######################################
@@ -99,58 +97,75 @@ def extract_csv(file_url, start, type, user):
         if not oauth_obj:
             return "No record found"
             
-        chunck_size = 2
+        chunck_size = 10
+        # time_cnt = 0
         while start < len(dframe):
+            # time_cnt+= 1
+            # print(time_cnt)
             end = start + chunck_size
             batch = dframe[start:end]
             # if any colunm have value, ignore for already processed
             mask = batch[["Search Message", "Move Message", "Update Message"]].replace("", pd.NA).notna().any(axis=1)
             filter_batch = batch[mask==False]
+            
             for index, col in filter_batch.iterrows():
-                
-                nmg_dept_obj = models.NMGDepartmentModel.objects.filter(oauthModal=oauth_obj, departmentid=col['Department']).first()
-                if nmg_dept_obj:
-                    zen_dept_obj = models.ZenDepartmentModel.objects.filter(oauthModal=oauth_obj, depatment_name=nmg_dept_obj.depatment_name).first()
-                    if zen_dept_obj:
-                        search_ticket_resp = get(url = f"https://desk.zoho.in/api/v1/tickets/search?subject={col['Subject']}", org_id = oauth_obj.orgId, access_token = oauth_obj.access_token, type="search")
-                        
-                        if not any (err in search_ticket_resp for err in ("errorCode", "error")):
-                            search_data = search_ticket_resp['data']
-                            for loop_obj in search_data:
-                               
-                                if zen_dept_obj.departmentid != loop_obj["departmentId"]:
-                                    try:
-                                        qury = {"departmentId" : zen_dept_obj.departmentid}
-                                        moveTicket_resp = post(url = f"https://desk.zoho.in/api/v1/tickets/{loop_obj['id']}/move", org_id = oauth_obj.orgId , access_token = oauth_obj.access_token, param = qury, type="move_ticket")
-                                        if moveTicket_resp == 200:
-                                            update_data = {
-                                                "status" : loop_obj["status"],
-                                                "dueDate" : loop_obj["dueDate"],
-                                                "closedTime" : loop_obj["closedTime"],
-                                                "assigneeId"  : loop_obj["assigneeId"],  
-                                            }
-                                            update_ticket = update(url = f"https://desk.zoho.in/api/v1/tickets/{loop_obj['id']}", org_id = oauth_obj.orgId, access_token = oauth_obj.access_token, data = update_data)
-                                            batch.at[index,"Update Message"] = str(update_ticket)
-                                            op = "Updated"
-                                        else:
-                                            batch.at[index,"Move Message"] = str(moveTicket_resp)
+                try:
+                    nmg_dept_obj = models.NMGDepartmentModel.objects.filter(oauthModal=oauth_obj, departmentid=col['Department']).first()
+                    if nmg_dept_obj:
+                        zen_dept_obj = models.ZenDepartmentModel.objects.filter(oauthModal=oauth_obj, depatment_name=nmg_dept_obj.depatment_name).first()
+                        if zen_dept_obj:
+                            search_ticket_resp = get(url = f"https://desk.zoho.in/api/v1/tickets/search?subject={col['Subject']}", org_id = oauth_obj.orgId, access_token = oauth_obj.access_token, type="search")
+                            # print(search_ticket_resp)
+                            if not any (err in search_ticket_resp for err in ("errorCode", "error")):
+                                search_data = search_ticket_resp['data']
+                                t=0
+                                for loop_obj in search_data:
+                                    t+=1
+                                    print(f"Looping Tickets - {loop_obj["id"]}")
+                                    if zen_dept_obj.departmentid != loop_obj["departmentId"]:
+                                        try:
+                                            qury = {"departmentId" : zen_dept_obj.departmentid}
+                                            moveTicket_resp = post(url = f"https://desk.zoho.in/api/v1/tickets/{loop_obj['id']}/move", org_id = oauth_obj.orgId , access_token = oauth_obj.access_token, param = qury, type="move_ticket")
+                                            if moveTicket_resp == 200:
+                                                update_data = {
+                                                    "status" : loop_obj["status"],
+                                                    "dueDate" : loop_obj["dueDate"],
+                                                    "closedTime" : loop_obj["closedTime"],
+                                                    "assigneeId"  : loop_obj["assigneeId"],  
+                                                }
+                                                update_ticket = update(url = f"https://desk.zoho.in/api/v1/tickets/{loop_obj['id']}", org_id = oauth_obj.orgId, access_token = oauth_obj.access_token, data = update_data)
+                                                batch.at[index,"Update Message"] = str(update_ticket)
+                                                op = "Updated"
+                                            else:
+                                                batch.at[index,"Move Message"] = str(moveTicket_resp)
+                                                op = batch.at[index,"Move Message"]
+                                        except Exception as e:
+                                            batch.at[index,"Move Message"] = str(e)
                                             op = batch.at[index,"Move Message"]
-                                    except Exception as e:
-                                        batch.at[index,"Move Message"] = str(e)
-                                        op = batch.at[index,"Move Message"]
-                                else:
-                                    batch.at[index,"Search Message"] = "Already department same"
-                                    op = batch.at[index,"Search Message"]
-                                    
-                                break
+                                    else:
+                                        batch.at[index,"Search Message"] = "Already department same"
+                                        op = batch.at[index,"Search Message"]
+                                        
+                                    # break
+                                print(t)
+                            else:
+                                batch.at[index,"Search Message"] = str(search_ticket_resp)
+                                op = batch.at[index,"Search Message"]
                         else:
-                            batch.at[index,"Search Message"] = str(search_ticket_resp)
-                            op = batch.at[index,"Search Message"]
+                            batch.at[index,"Search Message"] = "No Zen Department match"
+                            op = "No Zen Department match"
                     else:
-                        op = "No Zen Department match"
-                else:
-                    op = "No NMG Department match"
+                        batch.at[index,"Search Message"] = "No NMG Department match"
+                        op = "No NMG Department match"
+                except Exception as e:
+                    batch.at[index,"Search Message"] = str(e)
+                    op = e
+                    
             start = end
+            # if time_cnt >= 3:
+            #     break
+
+            # time.sleep(30)
             break
         dframe.to_csv(file_url, index=False)
    
