@@ -8,4 +8,5 @@ urlpatterns = [
     path('updatedept',views.updateDepartment, name='updatedept'),
     # path('updatedeptnew',views.updateDepartmentNew, name='updatedeptnew'),
     # path('updatedeptnew1',views.updateDepartmentNew1, name='updatedeptnew1'),
+    path('changestatus',views.changestatus, name='changestatus'),
 ]

@@ -23,22 +23,21 @@ def post(*args, **kwargs):
             "grant_type" : kwargs['type'], 
             "redirect_uri" : "https://desk.zoho.in/"
         }
-    if kwargs['type'] == "move_ticket":
+    if kwargs['type'] == "move_ticket" or kwargs['type'] == 'Updated_Status':
         header = {
             "orgId" : kwargs['org_id'],
             "Authorization" : f'Zoho-oauthtoken {kwargs['access_token']}'
         }
         data = kwargs['param']
-        
     try:
-        if kwargs['type'] != "move_ticket":
+        if kwargs['type'] != "move_ticket" and kwargs['type'] != 'Updated_Status':
             resp = requests.post(url, data=data, headers=header)
             try:
                 json_resp = resp.json()
             except:
                 json_resp = json.loads(resp.text)
 
-        elif kwargs['type'] == "move_ticket":
+        elif kwargs['type'] == "move_ticket" or kwargs['type'] == 'Updated_Status':
             resp = requests.post(url, json=data, headers=header)
             json_resp = resp.status_code
 
@@ -168,6 +167,33 @@ def extract_csv(file_url, start, type, user):
             # time.sleep(30)
             break
         dframe.to_csv(file_url, index=False)
-   
-    return op
+
+    if type == 'ChangeStatus':
+        dframe = pd.read_csv(file_url, dtype={"Updated Message" : "string"})
+        oauth_obj = models.OauthModel.objects.filter(user=user, status="Active").first()
+        if not oauth_obj:
+            return "No record found"
+        
+        chunck_size = 50
+        cnt = 0
+        while start < len(dframe):
+            cnt +=1
+            end = start + chunck_size
+            batch = dframe.iloc[start:end]
+            # Find rows where Updated Message is empty or NaN
+            mask = batch["Updated Message"].isna() | (batch["Updated Message"] == "")
+            indices_to_update  = batch[mask].index
+            try:
+                data = {"ids" : list(dframe.loc[indices_to_update, "ID"])}
+                UpdatedStatus_resp = post(url = f"https://desk.zoho.in/api/v1/closeTickets", org_id = oauth_obj.orgId , access_token = oauth_obj.access_token, param = data, type="Updated_Status")
+                print(f"UpdatedStatus_resp - {UpdatedStatus_resp}")
+                dframe.loc[indices_to_update, "Updated Message"] = str(UpdatedStatus_resp)
+            except Exception as e:
+                dframe.loc[indices_to_update, "Updated Message"] = str(e)
+            start = end
+            if cnt >= 10:
+                break
+        dframe.to_csv(file_url, index=False)
+    return start
+    
 
